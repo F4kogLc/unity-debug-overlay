@@ -1,5 +1,4 @@
 using UnityEngine;
-using System.Collections;
 
 public class DebugOverlay
 {
@@ -156,57 +155,6 @@ public class DebugOverlay
         instance._DrawText(x, y, ref _buf, l);
     }
 
-    // Draw a histogram of one set of data. Data must contain non-negative datapoints.
-    public static void DrawHist(float x, float y, float w, float h, float[] data, int startSample, Color color, float maxRange = -1.0f)
-    {
-        if (instance == null)
-            return;
-        s_TempData[0] = data;
-        s_TempColors[0] = color;
-        instance._DrawHist(x, y, w, h, s_TempData, startSample, s_TempColors, maxRange);
-        s_TempData[0] = null;
-    }
-    static float[][] s_TempData = new float[1][];
-    static Color[] s_TempColors = new Color[1];
-
-    // Draw a stacked histogram multiple sets of data. Data must contain non-negative datapoints.
-    public static void DrawHist(float x, float y, float w, float h, float[][] data, int startSample, Color[] color, float maxRange = -1.0f)
-    {
-        if (instance == null)
-            return;
-        instance._DrawHist(x, y, w, h, data, startSample, color, maxRange);
-    }
-
-    public static void DrawGraph(float x, float y, float w, float h, float[] data, int startSample, Color color, float maxRange = -1.0f)
-    {
-        if (instance == null)
-            return;
-        s_TempData[0] = data;
-        s_TempColors[0] = color;
-        instance._DrawGraph(x, y, w, h, s_TempData, startSample, s_TempColors, maxRange);
-    }
-
-    public static void DrawGraph(float x, float y, float w, float h, float[][] data, int startSample, Color[] color, float maxRange = -1.0f)
-    {
-        if (instance == null)
-            return;
-        instance._DrawGraph(x, y, w, h, data, startSample, color, maxRange);
-    }
-
-    public static void DrawRect(float x, float y, float w, float h, Color col)
-    {
-        if (instance == null)
-            return;
-        instance._DrawRect(x, y, w, h, col);
-    }
-
-    public static void DrawLine(float x1, float y1, float x2, float y2, Color col)
-    {
-        if (instance == null)
-            return;
-        instance.AddLine(x1, y1, x2, y2, col);
-    }
-
     void _DrawText(float x, float y, ref char[] text, int length)
     {
         const string hexes = "0123456789ABCDEF";
@@ -227,119 +175,6 @@ public class DebugOverlay
             }
             AddQuad(m_OriginX + x + xpos, m_OriginY + y, 1, 1, text[i], col);
             xpos++;
-        }
-    }
-
-    void _DrawGraph(float x, float y, float w, float h, float[][] data, int startSample, Color[] color, float maxRange = -1.0f)
-    {
-        if(data == null || data.Length == 0 || data[0] == null)
-            throw new System.ArgumentException("Invalid data argument (data must contain at least one non null array");
-
-        var numSamples = data[0].Length;
-        /*
-        for(int i = 1; i < data.Length; ++i)
-        {
-            if(data[i] == null || data[i].Length != numSamples)
-                throw new System.ArgumentException("Length of data of all arrays must be the same");
-        }
-        */
-
-        if (color.Length != data.Length)
-            throw new System.ArgumentException("Length of colors must match number of datasets");
-
-        float maxData = float.MinValue;
-
-        foreach (var dataset in data)
-        {
-            for (var i = 0; i < numSamples; i++)
-            {
-                if (dataset[i] > maxData)
-                    maxData = dataset[i];
-            }
-        }
-
-        if (maxData > maxRange)
-            maxRange = maxData;
-
-        float dx = w / numSamples;
-        float scale = maxRange > 0 ? h / maxRange : 1.0f;
-
-        for (var j = 0; j < data.Length; j++)
-        {
-            float old_pos_x = 0;
-            float old_pos_y = 0;
-            Vector4 col = color[j];
-            for (var i = 0; i < numSamples; i++)
-            {
-                float d = data[j][(i + startSample) % numSamples];
-                var pos_x = m_OriginX + x + dx * i;
-                var pos_y = m_OriginY + y + h - d * scale;
-                if (i > 0)
-                    AddLine(old_pos_x, old_pos_y, pos_x, pos_y, col);
-                old_pos_x = pos_x;
-                old_pos_y = pos_y;
-            }
-        }
-
-        AddLine(x, y + h, x + w, y + h, color[0]);
-        AddLine(x, y, x, y + h, color[0]);
-    }
-
-    void _DrawHist(float x, float y, float w, float h, float[][] data, int startSample, Color[] color, float maxRange = -1.0f)
-    {
-        if (data == null || data.Length == 0 || data[0] == null)
-            throw new System.ArgumentException("Invalid data argument (data must contain at least one non null array");
-
-        var numSamples = data[0].Length;
-        /*
-        for (int i = 1; i < data.Length; ++i)
-        {
-            if (data[i] == null || data[i].Length != numSamples)
-                throw new System.ArgumentException("Length of data of all arrays must be the same");
-        }
-        */
-
-        if (color.Length != data.Length)
-            throw new System.ArgumentException("Length of colors must match number of datasets");
-
-        var dataLength = data.Length;
-
-        float maxData = float.MinValue;
-
-        // Find tallest stack of values
-        for (var i = 0; i < numSamples; i++)
-        {
-            float sum = 0;
-
-            foreach(var dataset in data)
-                sum += dataset[i];
-
-            if (sum > maxData)
-                maxData = sum;
-        }
-
-        if (maxData > maxRange)
-            maxRange = maxData;
-
-        float dx = w / numSamples;
-        float scale = maxRange > 0 ? h / maxRange : 1.0f;
-
-        float stackOffset = 0;
-        for (var i = 0; i < numSamples; i++)
-        {
-            stackOffset = 0;
-            for (var j = 0; j < data.Length; j++)
-            {
-                var c = color[j];
-                float d = data[j][(i + startSample) % numSamples];
-                float barHeight = d * scale; // now in [0, h]
-                var pos_x = m_OriginX + x + dx * i;
-                var pos_y = m_OriginY + y + h - barHeight - stackOffset;
-                var width = dx;
-                var height = barHeight;
-                stackOffset += barHeight;
-                AddQuad(pos_x, pos_y, width, height, '\0', new Vector4(c.r, c.g, c.b, c.a));
-            }
         }
     }
 

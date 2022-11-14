@@ -3,7 +3,24 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-public class Console : IGameSystem
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
+
+#if ENABLE_INPUT_SYSTEM
+using UnityEngine.InputSystem;
+#endif
+
+public static class Colors
+{
+    public static readonly string Red = "^F44";
+    public static readonly string White = "^FFF";
+    public static readonly string Yellow = "^CC0";
+    public static readonly string Pink = "^F1C";
+    public static readonly string Green = "^4F4";
+}
+
+public class Console : MonoBehaviour
 {
     const int k_BufferSize = 80 * 25 * 1000; // arbitrarily set to 1000 scroll back lines at 80x25
     const int k_InputBufferSize = 512;
@@ -17,8 +34,10 @@ public class Console : IGameSystem
     int m_LastVisibleLine;
     float m_ConsoleFoldout;
     float m_ConsoleFoldoutDest;
-
     bool m_ConsoleOpen;
+
+    DebugOverlay m_DebugOverlay;
+    WaitForEndOfFrame endFrameCor;
 
     char[] m_InputFieldBuffer;
     int m_CursorPos = 0;
@@ -32,82 +51,78 @@ public class Console : IGameSystem
     Vector4 m_TextColor = new Vector4(0.7f, 1.0f, 0.7f, 1.0f);
     Color m_CursorCol = new Color(0, 0.8f, 0.2f, 0.5f);
 
+#if ENABLE_INPUT_SYSTEM
+    Key toggleKey = Key.Backquote;
+#else
+    KeyCode toggleKey = KeyCode.BackQuote;
+#endif
+
     System.UInt32[] m_ConsoleBuffer;
 
-    public Console()
+    public void Awake()
     {
-        m_ConsoleBuffer = new System.UInt32[k_BufferSize];
-        m_InputFieldBuffer = new char[k_InputBufferSize];
-        AddCommand("help", CmdHelp, "Show available commands");
+        Init(null);
+        InitCommands();
+
+        endFrameCor = new WaitForEndOfFrame();
+        StartCoroutine(EndOfFrame());
+
+        Write($"{Colors.Green}Game initialized...");
     }
 
-    void CmdHelp(string[] args)
+    private void OnDisable()
     {
-        foreach (var c in m_Commands)
+        Application.logMessageReceivedThreaded -= HandleLogThreaded;
+    }
+
+    private void OnEnable()
+    {
+        Application.logMessageReceivedThreaded += HandleLogThreaded;
+    }
+
+    private void HandleLogThreaded(string message, string stackTrace, LogType type)
+    {
+        switch (type)
         {
-            Write("  {0,-15} {1}\n", c.Key, m_CommandDescriptions[c.Key]);
+            case LogType.Log: Write($"{Colors.White}{message} | {stackTrace}"); break;
+            case LogType.Warning: Write($"{Colors.Yellow}{message} | {stackTrace}"); break;
+            case LogType.Exception: Write($"{Colors.Red}{message} | {stackTrace}"); break;
+            case LogType.Error: Write($"{Colors.Red}{message} | {stackTrace}"); break;
+            case LogType.Assert: Write($"{Colors.Red}{message} | {stackTrace}"); break;
         }
     }
 
-    public void Init()
+    private void Init(DebugOverlay debugOverlay)
     {
-        Init(null);
-    }
+        m_DebugOverlay = new DebugOverlay();
+        m_DebugOverlay.Init(120, 36);
 
-    public void Init(DebugOverlay debugOverlay)
-    {
+        m_ConsoleBuffer = new System.UInt32[k_BufferSize];
+        m_InputFieldBuffer = new char[k_InputBufferSize];
+
         m_DebugOverlay = debugOverlay != null ? debugOverlay : DebugOverlay.instance;
         Resize(m_DebugOverlay.width, m_DebugOverlay.height);
         Clear();
     }
 
-    public void Shutdown()
+    private void InitCommands()
     {
+        AddCommand("help", CmdHelp, "Show available commands");
+        AddCommand("clear", CmdClear, "Clear console");
+        AddCommand("quit", CmdQuit, "Quit game");
     }
 
     public delegate void CommandDelegate(string[] args);
     Dictionary<string, CommandDelegate> m_Commands = new Dictionary<string, CommandDelegate>();
     Dictionary<string, string> m_CommandDescriptions = new Dictionary<string, string>();
 
-    public void AddCommand(string name, CommandDelegate callback, string description)
+    private void Update()
     {
-        if (m_Commands.ContainsKey(name))
-        {
-            Write("Cannot add command {0} twice", name);
-            return;
-        }
-        m_Commands.Add(name, callback);
-        m_CommandDescriptions.Add(name, description);
-    }
-
-    public void Resize(int width, int height)
-    {
-        m_Width = width;
-        m_Height = height;
-        m_NumLines = m_ConsoleBuffer.Length / m_Width;
-
-        m_LastLine = m_Height - 1;
-        m_LastVisibleLine = m_Height - 1;
-        m_LastColumn = 0;
-
-        // TODO: copy old text to resized console
-    }
-
-    public void Clear()
-    {
-        for (int i = 0, c = m_ConsoleBuffer.Length; i < c; i++)
-            m_ConsoleBuffer[i] = 0;
-        m_LastColumn = 0;
-    }
-
-    public void Show(float shown)
-    {
-        m_ConsoleFoldoutDest = shown;
-    }
-
-    public void TickUpdate()
-    {
-        if (Input.GetKeyDown(KeyCode.F12))
+#if ENABLE_INPUT_SYSTEM
+        if (Keyboard.current[toggleKey].wasPressedThisFrame)
+#else
+        if (Input.GetKeyDown(toggleKey))
+#endif
         {
             m_ConsoleOpen = !m_ConsoleOpen;
             m_ConsoleFoldoutDest = m_ConsoleOpen ? 1.0f : 0.0f;
@@ -156,6 +171,108 @@ public class Console : IGameSystem
                 }
             }
         }
+    }
+
+    private void LateUpdate()
+    {
+        if (m_ConsoleFoldout < m_ConsoleFoldoutDest)
+        {
+            m_ConsoleFoldout = Mathf.Min(m_ConsoleFoldoutDest, m_ConsoleFoldout + Time.deltaTime * 5.0f);
+        }
+        else if (m_ConsoleFoldout > m_ConsoleFoldoutDest)
+        {
+            m_ConsoleFoldout = Mathf.Max(m_ConsoleFoldoutDest, m_ConsoleFoldout - Time.deltaTime * 5.0f);
+        }
+
+        if (m_ConsoleFoldout <= 0.0f)
+            return;
+
+        var yoffset = -(float)m_Height * (1.0f - m_ConsoleFoldout);
+        m_DebugOverlay._DrawRect(0, 0 + yoffset, m_Width, m_Height, m_BackgroundColor);
+
+        var line = m_LastVisibleLine;
+        if ((m_LastVisibleLine == m_LastLine) && (m_LastColumn == 0))
+        {
+            line -= 1;
+        }
+
+        Vector4 col = m_TextColor;
+        UInt32 icol = 0;
+        for (var i = 0; i < m_Height - 1; i++, line--)
+        {
+            var idx = (line % m_NumLines) * m_Width;
+            for (var j = 0; j < m_Width; j++)
+            {
+                UInt32 c = m_ConsoleBuffer[idx + j];
+                char ch = (char)(c & 0xff);
+                if (icol != (c & 0xffffff00))
+                {
+                    icol = c & 0xffffff00;
+                    col.x = (float)((icol >> 24) & 0xff) / 255.0f;
+                    col.y = (float)((icol >> 16) & 0xff) / 255.0f;
+                    col.z = (float)((icol >> 8) & 0xff) / 255.0f;
+                }
+                if (c != '\0')
+                    m_DebugOverlay.AddQuad(j, m_Height - 2 - i + yoffset, 1, 1, ch, col);
+            }
+        }
+
+        // Draw input line
+        var horizontalScroll = m_CursorPos - m_Width + 1;
+        horizontalScroll = Mathf.Max(0, horizontalScroll);
+        for (var i = horizontalScroll; i < m_InputFieldLength; i++)
+        {
+            char c = m_InputFieldBuffer[i];
+            if (c != '\0')
+                m_DebugOverlay.AddQuad(i - horizontalScroll, m_Height - 1 + yoffset, 1, 1, c, m_TextColor);
+        }
+        m_DebugOverlay.AddQuad(m_CursorPos - horizontalScroll, m_Height - 1 + yoffset, 1, 1, '\0', m_CursorCol);
+        m_DebugOverlay.TickLateUpdate();
+    }
+
+    private IEnumerator EndOfFrame()
+    {
+        while (true)
+        {
+            yield return endFrameCor; m_DebugOverlay.Render();
+        }
+    }
+
+    #region  Funcs
+    public void AddCommand(string name, CommandDelegate callback, string description)
+    {
+        if (m_Commands.ContainsKey(name))
+        {
+            Write("Cannot add command {0} twice", name);
+            return;
+        }
+        m_Commands.Add(name, callback);
+        m_CommandDescriptions.Add(name, description);
+    }
+
+    public void Resize(int width, int height)
+    {
+        m_Width = width;
+        m_Height = height;
+        m_NumLines = m_ConsoleBuffer.Length / m_Width;
+
+        m_LastLine = m_Height - 1;
+        m_LastVisibleLine = m_Height - 1;
+        m_LastColumn = 0;
+
+        // TODO: copy old text to resized console
+    }
+
+    public void Clear()
+    {
+        for (int i = 0, c = m_ConsoleBuffer.Length; i < c; i++)
+            m_ConsoleBuffer[i] = 0;
+        m_LastColumn = 0;
+    }
+
+    public void Show(float shown)
+    {
+        m_ConsoleFoldoutDest = shown;
     }
 
     void HistoryPrev()
@@ -218,62 +335,6 @@ public class Console : IGameSystem
         {
             Write("Unknown command: {0}\n", splitCommand[0]);
         }
-    }
-
-    public void TickLateUpdate()
-    {
-        if (m_ConsoleFoldout < m_ConsoleFoldoutDest)
-        {
-            m_ConsoleFoldout = Mathf.Min(m_ConsoleFoldoutDest, m_ConsoleFoldout + Time.deltaTime * 5.0f);
-        }
-        else if (m_ConsoleFoldout > m_ConsoleFoldoutDest)
-        {
-            m_ConsoleFoldout = Mathf.Max(m_ConsoleFoldoutDest, m_ConsoleFoldout - Time.deltaTime * 5.0f);
-        }
-
-        if (m_ConsoleFoldout <= 0.0f)
-            return;
-
-        var yoffset = -(float)m_Height * (1.0f - m_ConsoleFoldout);
-        m_DebugOverlay._DrawRect(0, 0 + yoffset, m_Width, m_Height, m_BackgroundColor);
-
-        var line = m_LastVisibleLine;
-        if ((m_LastVisibleLine == m_LastLine) && (m_LastColumn == 0))
-        {
-            line -= 1;
-        }
-
-        Vector4 col = m_TextColor;
-        UInt32 icol = 0;
-        for (var i = 0; i < m_Height - 1; i++, line--)
-        {
-            var idx = (line % m_NumLines) * m_Width;
-            for (var j = 0; j < m_Width; j++)
-            {
-                UInt32 c = m_ConsoleBuffer[idx + j];
-                char ch = (char)(c & 0xff);
-                if (icol != (c & 0xffffff00))
-                {
-                    icol = c & 0xffffff00;
-                    col.x = (float)((icol >> 24) & 0xff) / 255.0f;
-                    col.y = (float)((icol >> 16) & 0xff) / 255.0f;
-                    col.z = (float)((icol >> 8) & 0xff) / 255.0f;
-                }
-                if (c != '\0')
-                    m_DebugOverlay.AddQuad(j, m_Height - 2 - i + yoffset, 1, 1, ch, col);
-            }
-        }
-
-        // Draw input line
-        var horizontalScroll = m_CursorPos - m_Width + 1;
-        horizontalScroll = Mathf.Max(0, horizontalScroll);
-        for (var i = horizontalScroll; i < m_InputFieldLength; i++)
-        {
-            char c = m_InputFieldBuffer[i];
-            if (c != '\0')
-                m_DebugOverlay.AddQuad(i - horizontalScroll, m_Height - 1 + yoffset, 1, 1, c, m_TextColor);
-        }
-        m_DebugOverlay.AddQuad(m_CursorPos - horizontalScroll, m_Height - 1 + yoffset, 1, 1, '\0', m_CursorCol);
     }
 
     void NewLine()
@@ -340,7 +401,7 @@ public class Console : IGameSystem
 
     public void Write(string format)
     {
-        var l = StringFormatter.Write(ref _buf, 0, format);
+        var l = StringFormatter.Write(ref _buf, 0, format + "\n");
         _Write(_buf, l);
     }
 
@@ -429,6 +490,30 @@ public class Console : IGameSystem
         }
         return minl;
     }
+    #endregion
 
-    DebugOverlay m_DebugOverlay;
+    #region Commands
+    void CmdHelp(string[] args)
+    {
+        foreach (var c in m_Commands)
+        {
+            Write("  {0,-15} {1}\n", Colors.Pink + c.Key, Colors.Yellow + m_CommandDescriptions[c.Key]);
+        }
+    }
+
+    void CmdClear(string[] args)
+    {
+        Clear();
+    }
+
+    void CmdQuit(string[] args)
+    {
+#if UNITY_EDITOR
+        EditorApplication.isPlaying = false;
+#else
+        Application.Quit();
+#endif
+    }
+    #endregion
+
 }
