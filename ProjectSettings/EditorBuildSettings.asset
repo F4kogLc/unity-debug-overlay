@@ -6,6 +6,6 @@ EditorBuildSettings:
   serializedVersion: 2
   m_Scenes:
   - enabled: 1
-    path: Assets/DebugOverlay/DebugOverlayTest.unity
+    path: Assets/Console/DemoScene.unity
     guid: 61b21ba9fc0d7c04eb28a72045df7d38
   m_configObjects: {}

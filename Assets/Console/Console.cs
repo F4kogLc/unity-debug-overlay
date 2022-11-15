@@ -3,22 +3,9 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-#if UNITY_EDITOR
-using UnityEditor;
-#endif
-
 #if ENABLE_INPUT_SYSTEM
 using UnityEngine.InputSystem;
 #endif
-
-public static class Colors
-{
-    public static readonly string Red = "^F44";
-    public static readonly string White = "^FFF";
-    public static readonly string Yellow = "^CC0";
-    public static readonly string Pink = "^F1C";
-    public static readonly string Green = "^4F4";
-}
 
 public class Console : MonoBehaviour
 {
@@ -47,25 +34,32 @@ public class Console : MonoBehaviour
     int m_HistoryDisplayIndex = 0;
     int m_HistoryNextIndex = 0;
 
-    Color m_BackgroundColor = new Color(0, 0, 0, 0.9f);
-    Vector4 m_TextColor = new Vector4(0.7f, 1.0f, 0.7f, 1.0f);
-    Color m_CursorCol = new Color(0, 0.8f, 0.2f, 0.5f);
+    [SerializeField] private Color m_BackgroundColor = new Color(0, 0, 0, 0.9f);
+    [SerializeField] private Vector4 m_TextColor = new Vector4(0.7f, 1.0f, 0.7f, 1.0f);
+    [SerializeField] private Color m_CursorCol = new Color(0, 0.8f, 0.2f, 0.5f);
 
+    [SerializeField]
 #if ENABLE_INPUT_SYSTEM
-    Key toggleKey = Key.Backquote;
+    private Key toggleKey = Key.Backquote;
 #else
-    KeyCode toggleKey = KeyCode.BackQuote;
+    private KeyCode toggleKey = KeyCode.BackQuote;
 #endif
 
     System.UInt32[] m_ConsoleBuffer;
 
+    public static Console Instance;
+    Commands Commands;
+
     public void Awake()
     {
+        Instance = this;
+        DontDestroyOnLoad(this);
         Init(null);
-        InitCommands();
 
         endFrameCor = new WaitForEndOfFrame();
         StartCoroutine(EndOfFrame());
+
+        Commands = new Commands();
 
         Write($"{Colors.Green}Game initialized...");
     }
@@ -84,7 +78,7 @@ public class Console : MonoBehaviour
     {
         switch (type)
         {
-            case LogType.Log: Write($"{Colors.White}{message} | {stackTrace}"); break;
+            case LogType.Log: Write($"{Colors.White}{message}"); break;
             case LogType.Warning: Write($"{Colors.Yellow}{message} | {stackTrace}"); break;
             case LogType.Exception: Write($"{Colors.Red}{message} | {stackTrace}"); break;
             case LogType.Error: Write($"{Colors.Red}{message} | {stackTrace}"); break;
@@ -105,16 +99,9 @@ public class Console : MonoBehaviour
         Clear();
     }
 
-    private void InitCommands()
-    {
-        AddCommand("help", CmdHelp, "Show available commands");
-        AddCommand("clear", CmdClear, "Clear console");
-        AddCommand("quit", CmdQuit, "Quit game");
-    }
-
     public delegate void CommandDelegate(string[] args);
-    Dictionary<string, CommandDelegate> m_Commands = new Dictionary<string, CommandDelegate>();
-    Dictionary<string, string> m_CommandDescriptions = new Dictionary<string, string>();
+    public Dictionary<string, CommandDelegate> m_Commands = new Dictionary<string, CommandDelegate>();
+    public Dictionary<string, string> m_CommandDescriptions = new Dictionary<string, string>();
 
     private void Update()
     {
@@ -349,7 +336,7 @@ public class Console : MonoBehaviour
 
     void Scroll(int amount)
     {
-        m_LastVisibleLine += amount;
+        m_LastVisibleLine += amount * 3;
 
         // Prevent going past last line
         if (m_LastVisibleLine > m_LastLine)
@@ -491,29 +478,4 @@ public class Console : MonoBehaviour
         return minl;
     }
     #endregion
-
-    #region Commands
-    void CmdHelp(string[] args)
-    {
-        foreach (var c in m_Commands)
-        {
-            Write("  {0,-15} {1}\n", Colors.Pink + c.Key, Colors.Yellow + m_CommandDescriptions[c.Key]);
-        }
-    }
-
-    void CmdClear(string[] args)
-    {
-        Clear();
-    }
-
-    void CmdQuit(string[] args)
-    {
-#if UNITY_EDITOR
-        EditorApplication.isPlaying = false;
-#else
-        Application.Quit();
-#endif
-    }
-    #endregion
-
 }

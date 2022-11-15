@@ -34,7 +34,7 @@ You can write
 
 ```c#
     // Register quit command
-    Game.console.AddCommand("quit", CmdQuit, "Quit game");
+    Console.Instance.AddCommand("quit", CmdQuit, "Quit game");
 
     /* ... */
 
