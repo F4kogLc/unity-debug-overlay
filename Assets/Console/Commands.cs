@@ -1,5 +1,6 @@
 using System;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
@@ -10,7 +11,9 @@ public class Commands
     {
         Console.Instance.AddCommand("help", CmdHelp, "Show available commands");
         Console.Instance.AddCommand("clear", CmdClear, "Clear console");
+        Console.Instance.AddCommand("scene", CmdScene, "Load scene");
         Console.Instance.AddCommand("timescale", CmdTimeScale, "Game time scale (default - 1.0)");
+        Console.Instance.AddCommand("gravity", CmdGravity, "Game gravity (default - -9.81)");
         Console.Instance.AddCommand("fov", CmdFov, "Field of view of main camera (default - 60)");
         Console.Instance.AddCommand("windowmode", CmdWindowMode, "Window mode (0 - fullscreen, 1 - windowed, 2 - exclusive full screen, 3 - maximized window)");
         Console.Instance.AddCommand("resolution", CmdResolution, "Window resolution (width, heigth)");
@@ -43,6 +46,28 @@ public class Commands
 
         Console.Instance.Write($"{Colors.Green}Time scale changed to {num[0]} from {Time.timeScale}");
         Time.timeScale = num[0];
+    }
+
+    private void CmdGravity(string[] args)
+    {
+        float[] num = Array.ConvertAll(args, s => float.Parse(s));
+
+        Console.Instance.Write($"{Colors.Green}Gravity changed to {num[0]} from {Physics.gravity.y}");
+        Physics.gravity = new Vector3(0, num[0], 0);
+    }
+
+    private void CmdScene(string[] args)
+    {
+        int[] num = Array.ConvertAll(args, s => int.Parse(s));
+
+        if (num[0] < -1)
+        {
+            Console.Instance.Write($"{Colors.Red}The value cannot be less than -1");
+            return;
+        }
+
+        Console.Instance.Write($"{Colors.Green}Scene changed to {num[0]} from {SceneManager.GetActiveScene().buildIndex}");
+        SceneManager.LoadScene(num[0]);
     }
 
     private void CmdFov(string[] args)

@@ -40,7 +40,7 @@ You can write
 
     void CmdQuit(string[] args)
     {
-    	Game.console.Write("Goodbye\n");
+    	Console.Instance.Write("Goodbye\n");
         Application.Quit();
     }
 ```
