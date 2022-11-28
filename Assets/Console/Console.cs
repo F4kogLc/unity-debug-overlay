@@ -177,7 +177,10 @@ public class Console : MonoBehaviour
         }
 
         if (m_ConsoleFoldout <= 0.0f)
+        {
+            m_DebugOverlay.TickLateUpdate();
             return;
+        }
 
         var yoffset = -(float)m_Height * (1.0f - m_ConsoleFoldout) - 2.0f;
         m_DebugOverlay._DrawRect(0, 0 + yoffset, m_Width, m_Height, m_BackgroundColor);
